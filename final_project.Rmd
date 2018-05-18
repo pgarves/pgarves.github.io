@@ -1,0 +1,257 @@
+---
+title: 'Final Project: Aircraft Accidents'
+author: "Paul Garvey"
+date: "May 18, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this tutorial we will explore the basics convered in CMSC320 using a single data source that is not only extensive, but has real world data that can answer some interesting questions regarding the common patterns found in aircraft incidents and maybe even the probability of an incident occuring to you! How Fun!
+
+##Introduction
+
+In today's skies, there are flying machines of all different types that travel to new horizons. You have probably been in at least one of those types of aircraft in your life-time, but with so many different types out there, are their better options then the most common, an airplane? Unfortunatly, like all machines, aircraft are designed with safety in mind but accidents do occur, sometimes fatal. For this reason, we are going to look at records of aircraft incidents and try to discover what we can about when these incidents occur and their likelihood of resulting in a fatal incident.
+
+It is important to note that not all incidents reported are the same. In fact, the FAA requires that all acts that could have resulted in a dangerous situation, such as engine failure, be reported to them. Engine failure may seem like a big deal for an aircraft, but it really depends on which aircraft, because different flight characteristics of different aircraft will determine the seriousness of such an event. For example: A typical Airplane with fixed wings is able to safely glide back down to earth and land safely with no damage to the airplane or the passangers. With this information, we will be able to determine safety by comparing incidents that resulted in fatalities compared to all of the incidents reported.
+
+
+##Data Curation, Parsing, and Management
+
+Before we can manipulate the data, we need to first scrape it! Luckily for us, the data that we are using comes from a fairly reputable source and is fairly clean. 
+
+The source is found here: https://www.kaggle.com/khsamaha/aviation-accident-database-synopses
+
+As you can tell from the download, this is a .csv file or (Comma Separated Values file). In order to import into our Rmarkdown we will be using a function from tidyverse called ```read_csv()``` which will do just that, read the csv and make it into a dataframe.
+
+```{r import}
+library(tidyverse)
+library(broom)
+library(knitr)
+av_tab <- read_csv("AviationData.csv/AviationData.csv")
+```
+
+With this newly created data frame, we can further improve how the data is classified with in it, and tidy it up! For example, under Injury.Severity not only does the data display whether or not the incident was fatal, but it includes data that already exists in Total.Fatal.Injuries attribute. As a result, we are going to go ahead and remove that extra info, and factor the attribute like we will do for other attributes that should be classified in this way. Factoring the data lets the dataset know that this attribute contains a non-continuous variable that we may want to partition later. Lastly, we can fill in missing values in the table dealing with injuries so they quantify to 0.
+
+```{r classification}
+av_tab$Investigation.Type <- factor(av_tab$Investigation.Type)
+
+av_tab$Injury.Severity <- sub("\\(\\d+\\)", "", av_tab$Injury.Severity)
+av_tab$Injury.Severity <- factor(av_tab$Injury.Severity)
+
+av_tab$Aircraft.Damage <- factor(av_tab$Aircraft.Damage)
+av_tab$Aircraft.Category <- factor(av_tab$Aircraft.Category)
+av_tab$Amateur.Built <- factor(av_tab$Amateur.Built)
+av_tab$Engine.Type <- factor(av_tab$Engine.Type)
+av_tab$Purpose.of.Flight <- factor(av_tab$Purpose.of.Flight)
+av_tab$Weather.Condition <- factor(av_tab$Weather.Condition)
+av_tab$Broad.Phase.of.Flight <- factor(av_tab$Broad.Phase.of.Flight)
+
+av_tab$Total.Fatal.Injuries[is.na(av_tab$Total.Fatal.Injuries)] <- 0
+av_tab$Total.Serious.Injuries[is.na(av_tab$Total.Serious.Injuries)] <- 0
+av_tab$Total.Minor.Injuries[is.na(av_tab$Total.Minor.Injuries)] <- 0 
+
+av_tab
+```
+
+Well that was not so hard! With our dataframe set up, we are now ready to begin analyzing the data and distinguish commonalities between the 81,000 recorded events
+
+
+##Exploratory Data Analysis
+
+Now that we have the data adequetly classified and properly tidied. Let's visualize the data to get an idea of where we can go with it and see what patterns and trends that we can further analyze. 
+
+Let's begin by looking to see which Phase of Flight can be considered most dangerous based on the data:
+```{r general_observations_1}
+av_tab %>%
+  ggplot(aes(x=Broad.Phase.of.Flight)) +
+  geom_bar() + 
+  labs(title="Incidents during Phases of Flight",
+          x="Phase of Flight", y="Incidents") +
+  theme(axis.text.x = element_text(angle = -45, hjust = 0)) 
+```
+
+Alright, that's cool, clearly we can see that Landing and TakeOff are the two most dangerous phases of flight. This makes sense if you think about it. These events are transitional where the aircraft is transitioning from ground to sky or sky to ground. A lot must happen during these phases for things to go smoothly and it is more likely for a pilot to make a mistake at this time or an engine to fail as it pushed to work harder.
+
+However, let's shift focus on the fact that there are so many different kinds of aircraft with different characteristics. Is it possible to see that one type of aircraft is more dangerous than all others?
+
+```{r general_observations_2}
+av_tab %>%
+  ggplot(aes(x=Aircraft.Category)) +
+  geom_bar() + 
+  labs(title="Number of Incidents per Aircraft Type",
+          x="Aircraft Type", y="Incidents") +
+  theme(axis.text.x = element_text(angle = -45, hjust = 0)) 
+```
+
+Well, clearly this doesn't tell us anything important or revolutionary, most of data is actually not classifed with an Aircraft Type. So that data is useless. However, we should be able to find some patterns with the rest of data considering their are more than 20,000+ records. We are going to filter out the Aircraft.Categories that we don't care about, and try again.
+
+```{r av_cat_clean}
+av_cat_clean <- av_tab %>%
+  filter(av_tab$Aircraft.Category != "NA", av_tab$Aircraft.Category != "Unknown")
+
+av_cat_clean %>%
+  ggplot(aes(x=Aircraft.Category)) +
+  geom_bar() + 
+  labs(title="Number of Incidents per Aircraft Type",
+          x="Aircraft Type", y="Incidents") +
+  theme(axis.text.x = element_text(angle = -45, hjust = 0)) 
+```
+
+That's better, but all this really tells us is that Airplanes have had more incidents reported then any other aircraft type, which makes sense as this is the most popular aircraft type. We need a better way of quantifying saftey and factoring more variables into the the data. Therefore we are going to create a new data frame to better quantify the data we have.
+
+To do this we are going to simplify the date to just the year and then group the years into differet size periods that we will use for our analysis later on. 
+
+```{r alt_av_tab}
+av_cat_clean$Year <- sub("\\-\\d+\\-\\d+", "", av_cat_clean$Event.Date)
+av_cat_clean$Year <- as.numeric(av_cat_clean$Year)
+
+alt_av_tab <- av_cat_clean %>%
+  filter(Injury.Severity != "Unavailable") %>%
+  mutate(period=cut(Year, breaks = 10)) %>%
+  group_by(Aircraft.Category, period) %>%
+  count(Injury.Severity) %>%
+  mutate(Total.Incidents=n)
+
+alt_av_tab_2 <- av_cat_clean %>%
+  filter(Year > "1980", Injury.Severity != "Unavailable") %>%
+  mutate(period=cut(Year, breaks = 5)) %>%
+  group_by(Aircraft.Category, period) %>%
+  count(Injury.Severity) %>%
+  mutate(Total.Incidents=n)
+
+alt_av_tab_2 <- alt_av_tab_2 %>%
+  select(Aircraft.Category,period,Injury.Severity,Total.Incidents)
+
+alt_av_tab_2
+```
+
+Ok, now we are talking! What we have now is a data frame that quantifies the number of incidents by their severity during 5 different time periods from 1980 to 2017. This puts us in a better position to manipulate the data and see trends across these years which is much more useful! Let's visualize it!
+
+```{r visual-alt_av_tab}
+alt_av_tab_2 %>%
+ggplot(aes(x=Injury.Severity, y=Total.Incidents, color=Aircraft.Category)) +
+    facet_grid(.~period) +
+    geom_point() +
+  labs(title="Classified Incident Numbers by Time Frame",
+          x="Incident Severity", y="Incidents") +
+    theme(axis.text.x = element_text(angle = -45, hjust = 0)) 
+```
+
+Not bad, some information can be observed, but the data is clearly skewed toward Airplanes, not allowing us to clearly compare between the safety of different Aircraft Types. We need to scale and center the data, thus standardizing it using the following formula. 
+
+$$z_i=\frac{x_i-\bar{x}}{sd(x)}$$
+
+
+```{r standardize}
+standard_alt_av_tab <- alt_av_tab_2 %>%
+  mutate(period_mean_incidents=mean(Total.Incidents), period_sd_incidents=sd(Total.Incidents), standard_incidents=(Total.Incidents-period_mean_incidents)/period_sd_incidents)
+
+standard_alt_av_tab
+
+standard_alt_av_tab %>%
+ggplot(aes(x=Injury.Severity, y=standard_incidents, color=Aircraft.Category)) +
+    facet_grid(.~period) +
+    geom_point() +
+  labs(title="Number of Incidents per Aircraft Type",
+          x="Aircraft Type", y="Incidents") +
+    theme(axis.text.x = element_text(angle = -45, hjust = 0)) 
+
+```
+
+Now we are talking! Unfortunatly, we did have 13 instances where there were not enough incidents to calculate a standardized number of incidents, but that is Ok. It means that incidents in those aircraft categories are far more rare and are probably not common for anyone one of us. Clearly Airplanes are not the dominent aircraft category any more, and if we start looking at Fatal incidents we see Helicopters across the time periods being the most fatal. 
+
+
+##Hypothesis Testing
+
+So now that we have done our exploratory data analysis and visualization let's put a question to the test. We'll do this by making up a hypothesis and seeing if we can back it up with our data. In this case, I'm going to hypothesize that the probability of an fatal incident occuring in a helicopter is greater than in an airplane. With this hypothesis in place we can set up our null hypothesis, the probability of a fatal incident occuring to an airplane is higher. 
+
+In order to do this we are going to have to manipulate our data frame again so that we can better calculate probability. We will keep the same range of years:
+
+```{r probability}
+alt_av_tab$Severity.Fatal[alt_av_tab$Injury.Severity == "Fatal"] <- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == "Fatal"]
+
+alt_av_tab$Severity.Incident[alt_av_tab$Injury.Severity == "Incident"] <- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == "Incident"]
+
+alt_av_tab$Severity.Non_Fatal[alt_av_tab$Injury.Severity == "Non-Fatal"] <- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == "Non-Fatal"]
+
+alt_av_tab_3 <- alt_av_tab %>%
+  select(Aircraft.Category,period,Severity.Fatal,Severity.Non_Fatal, Severity.Incident) %>%
+  summarize_all(funs(sum(., na.rm = TRUE))) %>%
+  mutate(Percent.Fatal = (Severity.Fatal/(Severity.Non_Fatal+Severity.Incident+Severity.Fatal)))
+
+alt_av_tab_3
+
+```
+
+
+```{r prob_visual}
+alt_av_tab_3 %>%
+  filter(Aircraft.Category == "Airplane"| Aircraft.Category == "Helicopter") %>%
+  ggplot(aes(x=period, y=Percent.Fatal, color=Aircraft.Category)) +
+  geom_point() +
+  geom_hline(aes(yintercept=median(Percent.Fatal)), color="red") +
+  geom_hline(aes(yintercept=mean(Percent.Fatal)), color="blue") +
+  labs(title="Aircraft Type Fatality over Years",
+          x="Years", y="Fatal Incident (%)") +
+  theme(axis.text.x = element_text(angle = -45, hjust = 0)) 
+
+```
+
+Now that we have some more data to look at we can compare soley Airplanes to Helicopters. However the point of Hypothesis testing is to prove or dissprove the hypothesis, and for this we will use p-value to determine whether or not we can reject the null hypothesis. Based on the data we are going to assume the $p_a$ is .48 and our estimate $p_bhat$ is .75 as observed by the median of Percent Fatal. Therefore we will refine our null hypothesis to: The probability of an airplane fatality is greater than .48. For calculating p-value we will use the function ```pnorm()```.
+
+```{r hypothesis_testing}
+n <- 10
+pa <- .48
+var_xbar <- pa * (1-pa) / n
+
+p_bhat <- .75
+
+res <- pnorm(p_bhat, mean=pa, sd=sqrt(var_xbar), lower.tail = FALSE)
+res
+```
+
+As a result we see that: $$ p(\bar{X} > \hat{p}_B) < \alpha \Rightarrow .04372569 < .05 $$
+Which means that even though our number sampled is low, we are still able to reject the null hypothesis proving that indeed more helicopter incidents result in fatalities in comparison to airplanes. The Central Limit Theorem helps explain this result as we chose to base our testing on a normal distribution on $\bar{X}$ such that $N(E\bar{X},\sqrt{Var(\bar{X})})$.
+
+
+##Analysis through Machine Learning
+
+Another way to analyze the data and test the hypothesis is through machine learning where normally we will create two sets of data, one for testing and the other for training. However, due to the nature of our data we are going to simplify this analysis by using linear regression over the Years and distinguish how Fatalities are either increasing or decreasing in the last decade compared to Airplanes. Here we will be able to determine exactly how much safer airplanes are compared to helicopters by the difference in coefficients between the two Aircraft Categories.
+
+Further more, we can do some statistical analysis to see just how accurate the coefficients are and whether there could be room for error if we were to say predict a trend in the dangers of one Aircraft.Type over another. 
+
+```{r machinelearnig_setup, warning=FALSE}
+
+alt_av_tab_4 <- av_cat_clean %>%
+  filter(Injury.Severity != "Unavailable") %>%
+  group_by(Aircraft.Category, Year) %>%
+  count(Injury.Severity) %>%
+  mutate(Total.Incidents=n)
+
+alt_av_tab_4$Severity.Fatal[alt_av_tab_4$Injury.Severity == "Fatal"] <- alt_av_tab_4$Total.Incidents[alt_av_tab_4$Injury.Severity == "Fatal"]
+
+alt_av_tab_4$Severity.Incident[alt_av_tab_4$Injury.Severity == "Incident"] <- alt_av_tab_4$Total.Incidents[alt_av_tab_4$Injury.Severity == "Incident"]
+
+alt_av_tab_4$Severity.Non_Fatal[alt_av_tab_4$Injury.Severity == "Non-Fatal"] <- alt_av_tab_4$Total.Incidents[alt_av_tab_4$Injury.Severity == "Non-Fatal"]
+
+alt_av_tab_4 <- alt_av_tab_4 %>%
+  select(Aircraft.Category,Year,Severity.Fatal,Severity.Non_Fatal, Severity.Incident) %>%
+  summarize_all(funs(sum(., na.rm = TRUE))) %>%
+  mutate(Percent.Fatal = (Severity.Fatal/(Severity.Non_Fatal+Severity.Incident+Severity.Fatal)))
+
+av_fit <- lm(Percent.Fatal~Year+Aircraft.Category, data = alt_av_tab_4)
+
+av_fit
+
+av_fit_stats <- av_fit %>%
+  tidy()
+
+av_fit_stats %>% knitr::kable()
+```
+
+##Conclusions
+
+So now we can see clearly how all aircraft compare to Airplanes which is facinating as we notice are able to notice that Rockets has the highest coefficient estimate, something we were not able to see in the previous analysis. In real life, what this means is that when something goes wrong in a rocket, it is mostly likely going to be a catestrophic event. Similarly, but not as drastically, we see how Helicopters are slightly more dangerous than airplanes which was something we were able to hypothesize given the our preliminary data analysis.
