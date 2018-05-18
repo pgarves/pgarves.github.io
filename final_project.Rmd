@@ -170,7 +170,7 @@ So now that we have done our exploratory data analysis and visualization let's p
 
 In order to do this we are going to have to manipulate our data frame again so that we can better calculate probability. We will keep the same range of years:
 
-```{r probability}
+```{r probability, warning=FALSE}
 alt_av_tab$Severity.Fatal[alt_av_tab$Injury.Severity == "Fatal"] <- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == "Fatal"]
 
 alt_av_tab$Severity.Incident[alt_av_tab$Injury.Severity == "Incident"] <- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == "Incident"]

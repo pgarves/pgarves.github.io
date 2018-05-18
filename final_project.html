@@ -324,13 +324,13 @@ ggplot(aes(x=Injury.Severity, y=standard_incidents, color=Aircraft.Category)) +
 <h2>Hypothesis Testing</h2>
 <p>So now that we have done our exploratory data analysis and visualization let’s put a question to the test. We’ll do this by making up a hypothesis and seeing if we can back it up with our data. In this case, I’m going to hypothesize that the probability of an fatal incident occuring in a helicopter is greater than in an airplane. With this hypothesis in place we can set up our null hypothesis, the probability of a fatal incident occuring to an airplane is higher.</p>
 <p>In order to do this we are going to have to manipulate our data frame again so that we can better calculate probability. We will keep the same range of years:</p>
-<pre class="r"><code>alt_av_tab$Severity.Fatal[alt_av_tab$Injury.Severity == &quot;Fatal&quot;] &lt;- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == &quot;Fatal&quot;]</code></pre>
-<pre><code>## Warning: Unknown or uninitialised column: 'Severity.Fatal'.</code></pre>
-<pre class="r"><code>alt_av_tab$Severity.Incident[alt_av_tab$Injury.Severity == &quot;Incident&quot;] &lt;- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == &quot;Incident&quot;]</code></pre>
-<pre><code>## Warning: Unknown or uninitialised column: 'Severity.Incident'.</code></pre>
-<pre class="r"><code>alt_av_tab$Severity.Non_Fatal[alt_av_tab$Injury.Severity == &quot;Non-Fatal&quot;] &lt;- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == &quot;Non-Fatal&quot;]</code></pre>
-<pre><code>## Warning: Unknown or uninitialised column: 'Severity.Non_Fatal'.</code></pre>
-<pre class="r"><code>alt_av_tab_3 &lt;- alt_av_tab %&gt;%
+<pre class="r"><code>alt_av_tab$Severity.Fatal[alt_av_tab$Injury.Severity == &quot;Fatal&quot;] &lt;- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == &quot;Fatal&quot;]
+
+alt_av_tab$Severity.Incident[alt_av_tab$Injury.Severity == &quot;Incident&quot;] &lt;- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == &quot;Incident&quot;]
+
+alt_av_tab$Severity.Non_Fatal[alt_av_tab$Injury.Severity == &quot;Non-Fatal&quot;] &lt;- alt_av_tab$Total.Incidents[alt_av_tab$Injury.Severity == &quot;Non-Fatal&quot;]
+
+alt_av_tab_3 &lt;- alt_av_tab %&gt;%
   select(Aircraft.Category,period,Severity.Fatal,Severity.Non_Fatal, Severity.Incident) %&gt;%
   summarize_all(funs(sum(., na.rm = TRUE))) %&gt;%
   mutate(Percent.Fatal = (Severity.Fatal/(Severity.Non_Fatal+Severity.Incident+Severity.Fatal)))
